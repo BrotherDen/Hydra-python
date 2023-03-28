@@ -49,7 +49,7 @@ def save_settings():
         # 'user_name': user_name.get(),
         # 'password': password.get(),
         'port_name': port_var.get(),
-        'file_name': file_name.get(),
+        'file_name': file_entry.get(),
         'baudrate': baudrate_var.get()
     }
     with open('settings.ini', 'w') as f:
@@ -72,7 +72,9 @@ def load_settings():
         # password.insert(0, config['DEFAULT']['password'])
         port_var.set (config['DEFAULT']['port_name'])
         baudrate_var.set (int(config['DEFAULT']['baudrate']))
-        file_name.set(config['DEFAULT']['file_name'])
+        #file_name.set(config['DEFAULT']['file_name'])
+        #file_entry.delete(0, END)
+        file_entry.insert(0, config['DEFAULT']['file_name'])
     except FileNotFoundError:
         pass
 
@@ -102,8 +104,8 @@ def  select_file():
     # Отображаем диалог выбора файла и получаем имя выбранного файла
     file_name = fd.askopenfilename()
     if file_name: # если файл был выбран
-        entry.delete(0, tk.END) # очищаем текстовое поле
-        entry.insert(0, file_name) # вставляем имя файла в текстовое поле
+        file_entry.delete(0, tk.END) # очищаем текстовое поле
+        file_entry.insert(0, file_name) # вставляем имя файла в текстовое поле
 
 # Функция для запуска и остановки чтения данных из порта
 def toggle_read():
@@ -137,7 +139,7 @@ def read_and_write():
         text.see('end')
 
         # Проверяем, что пользователь выбрал файл
-        file_name = entry.get()
+        file_name = file_entry.get()
         if file_name:
             # Открываем файл для записи в режиме дозаписи ('a')
             with open(file_name, 'a') as f:
@@ -243,15 +245,13 @@ baudrate_menu = tk.OptionMenu(frame1, baudrate_var, *baudrate_list)
 baudrate_menu.grid(row=0,column=3)
 
 # Создаем переменную для хранения имени файла
-file_name = tk.StringVar(root)
+#file_name = tk.StringVar(root)
+
+file_entry = tk.Entry(frame2,width=60) # создаем виджет Entry для ввода имени файла
+#file_entry.insert(0, file_name.get())
+file_entry.grid(row=1,column=0) # размещаем виджет в окне
 
 load_settings()
-
-
-entry = tk.Entry(frame2,width=60) # создаем виджет Entry для ввода имени файла
-entry.insert(0, file_name.get())
-entry.grid(row=1,column=0) # размещаем виджет в окне
-
 
 # Создаем кнопку для запуска функции выбора файла
 btn2 = tk.Button (frame2, text="...", command=select_file, width=2)
