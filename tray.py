@@ -43,11 +43,11 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 def save_settings():
     config = configparser.ConfigParser()
     config['DEFAULT'] = {
-        # 'server_name': server_name.get(),
-        # 'database_name': database_name.get(),
-        # 'table_name': table_name.get(),
-        # 'user_name': user_name.get(),
-        # 'password': password.get(),
+        'server_name': server_name.get(),
+        'database_name': database_name.get(),
+        'table_name': table_name.get(),
+        'user_name': user_name.get(),
+        'password': password.get(),
         'port_name': port_var.get(),
         'file_name': file_entry.get(),
         'baudrate': baudrate_var.get()
@@ -60,18 +60,13 @@ def load_settings():
     try:
         config = configparser.ConfigParser()
         config.read('settings.ini')
-        # server_name.delete(0, END)
-        # server_name.insert(0, config['DEFAULT']['server_name'])
-        # database_name.delete(0, END)
-        # database_name.insert(0, config['DEFAULT']['database_name'])
-        # table_name.delete(0, END)
-        # table_name.insert(0, config['DEFAULT']['table_name'])
-        # user_name.delete(0, END)
-        # user_name.insert(0, config['DEFAULT']['user_name'])
-        # password.delete(0, END)
-        # password.insert(0, config['DEFAULT']['password'])
+        server_name.set(config['DEFAULT']['server_name'])
+        database_name.set(config['DEFAULT']['database_name'])
+        table_name.set(config['DEFAULT']['table_name'])
+        user_name.set(config['DEFAULT']['user_name'])
+        password.set(config['DEFAULT']['password'])
         port_var.set (config['DEFAULT']['port_name'])
-        baudrate_var.set (int(config['DEFAULT']['baudrate']))
+        baudrate_var.set (config['DEFAULT']['baudrate'])
         #file_name.set(config['DEFAULT']['file_name'])
         #file_entry.delete(0, END)
         file_entry.insert(0, config['DEFAULT']['file_name'])
@@ -154,36 +149,49 @@ def read_and_write():
         # Разделение строки на значения
         data = data.split(',')
 
-        # Извлекаем температуру и влажность из данных
-        Time = data[0]
-        Humidity = data[1]
-        Pressure = data[2]
-        Alt = data[3]
-        AirTemp = data[4]
-        WaterTemp = data[5]
-        Salinity = data[6]
+        notValid = "False"
+        for x in data:
+            if not x.isdigit():
+                try:
+                    float(x)
+                except ValueError:
+                    notValid = "True"
 
-        #print(data)  # Выводим данные на экран для отладки
-        print(datetime.utcfromtimestamp(int(data[0])).strftime('%m-%d %H:%M:%S'),data[1],data[2],data[3],data[4],data[5],data[6])
+        if notValid == "False":
+            # Извлекаем температуру и влажность из данных
+            Time = data[0]
+            Humidity = data[1]
+            Pressure = data[2]
+            Alt = data[3]
+            AirTemp = data[4]
+            WaterTemp = data[5]
+            Salinity = data[6]
 
-        if float(WaterTemp) == -127:
-            # если есть, воспроизводим звуковой файл
-            data_aud, fs = sf.read(soundname)
-            sd.play(data_aud, fs)
-            sd.wait()
-            WaterTemp = 25.03
-            Salinity = int( float(Salinity) * ( 1.0 + 0.02 * ( -127.0 - 25.0)))
+            #print(data)  # Выводим данные на экран для отладки
+            print(datetime.utcfromtimestamp(int(data[0])).strftime('%m-%d %H:%M:%S'),data[1],data[2],data[3],data[4],data[5],data[6])
 
+            if float(WaterTemp) == -127:
+                # если есть, воспроизводим звуковой файл
+                data_aud, fs = sf.read(soundname)
+                sd.play(data_aud, fs)
+                sd.wait()
+                WaterTemp = 25.03
+                Salinity = int( float(Salinity) * ( 1.0 + 0.02 * ( -127.0 - 25.0)))
 
-        # Вставка значений в таблицу Meteo
+            if int(Humidity) >= 0 and int(Humidity) <= 100 \
+                and float(AirTemp) >= 10 and float(AirTemp) <= 50 \
+                and float(WaterTemp) >= 10 and float(WaterTemp) <= 50 \
+                and int(Salinity) >= 0 and int(Salinity) <= 3000:
 
-        sql = "INSERT INTO Meteo (Time,Humidity,Pressure,Alt,AirTemp,WaterTemp,Salinity)  VALUES (FROM_UNIXTIME(%s), %s, %s, %s, %s, %s, %s)"
-        val = (Time,Humidity,Pressure,Alt,AirTemp, WaterTemp,Salinity)
-        try:
-            cursor.execute(sql, val)
-            sql_conn.commit()  # Подтверждаем изменения в базе данных
-        except mysql.connector.Error as err:
-            messagebox.showinfo("Ошибка", format(err))
+                    # Вставка значений в таблицу Meteo
+
+                    sql = "INSERT INTO Meteo (Time,Humidity,Pressure,Alt,AirTemp,WaterTemp,Salinity)  VALUES (FROM_UNIXTIME(%s), %s, %s, %s, %s, %s, %s)"
+                    val = (Time,Humidity,Pressure,Alt,AirTemp, WaterTemp,Salinity)
+                    try:
+                        cursor.execute(sql, val)
+                        sql_conn.commit()  # Подтверждаем изменения в базе данных
+                    except mysql.connector.Error as err:
+                        messagebox.showinfo("Ошибка", format(err))
 
     # Запускаем функцию снова через 1 секунду (строку не перемещать)
     root.after(1000, read_and_write)
@@ -247,6 +255,14 @@ baudrate_menu.grid(row=0,column=3)
 # Создаем переменную для хранения имени файла
 #file_name = tk.StringVar(root)
 
+#Создаем переменные для хранения параметров подключения к базе данных
+server_name = tk.StringVar(root)
+database_name = tk.StringVar(root)
+table_name = tk.StringVar(root)
+user_name = tk.StringVar(root)
+password = tk.StringVar(root)
+
+
 file_entry = tk.Entry(frame2,width=60) # создаем виджет Entry для ввода имени файла
 #file_entry.insert(0, file_name.get())
 file_entry.grid(row=1,column=0) # размещаем виджет в окне
@@ -284,7 +300,9 @@ root.bind("<Unmap>", lambda event: minimize_to_tray())
 
 # Подключаемся к базе данных MySQL с помощью mysql.connector.connect
 try:
-    sql_conn = mysql.connector.connect(host='localhost', user='root', password='', database='Hydra')
+    sql_conn = mysql.connector.connect(user=user_name.get(), password=password.get(),
+                                       host=server_name.get(),
+                                       database=database_name.get())
 except mysql.connector.Error as err:
     messagebox.showinfo("Ошибка", format(err))
 else:
