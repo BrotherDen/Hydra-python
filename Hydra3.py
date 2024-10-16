@@ -277,29 +277,6 @@ class App:
             print(f"Error while connecting to MySQL: {err}")
             self.sql_conn = None
 
-    """
-    def connect_to_mqtt(self):
-        #Подключение к MQTT брокеру
-        try:
-            self.mqtt_client = mqtt.Client()
-            self.mqtt_client.username_pw_set(self.mqtt_username.get(), self.mqtt_password.get())
-            self.mqtt_client.connect(self.mqtt_broker.get(), int(self.mqtt_port.get()), 60)
-            self.mqtt_client.subscribe(self.mqtt_topic.get())
-
-            time.sleep(1)  # Задержка для установления соединения
-
-            if not self.mqtt_client.is_connected():
-                raise ConnectionError("Failed to connect to MQTT broker")
-
-            print("Successfully connected to MQTT broker")
-            return self.mqtt_client
-
-        except Exception as err:
-            self.playSound()
-            print(f"Error while connecting to MQTT broker: {err}")
-            return None
-    """
-
     def connect_to_mqtt(self):
         """Подключение к MQTT брокеру с улучшенной обработкой ошибок и проверкой соединения"""
         try:
@@ -383,22 +360,6 @@ class App:
                 messagebox.showinfo("Ошибка SQL", format(err))
                 self.errLog.insert('end', "Ошибка SQL" + format(err) + '\n')
                 print(f"Ошибка SQL: {err}")
-    """
-    def publish_to_mqtt(self, data):
-        #Публикация данных на MQTT-брокер
-        topic = self.mqtt_topic.get()
-        if self.mqtt_client is not None:
-            try:
-                payload = json.dumps(data)  # Преобразуем данные в формат JSON
-                self.mqtt_client.publish(topic, payload)
-                # print(f"Published to MQTT: {payload}")
-            except Exception as err:
-                self.playSound()
-                print(f"Error while publishing to MQTT: {err}")
-        else:
-            print("MQTT client is not connected.")
-    """
-
 
     def publish_to_mqtt(self, data):
         """Публикация данных на MQTT-брокер"""
