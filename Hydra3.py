@@ -194,13 +194,13 @@ class App:
         tk.Button(self.frame2, text="...", command=self.select_file, width=2).grid(row=1, column=1)
 
         # Поля вывода и лога ошибок
-        self.text = tk.Text(self.frame2, width=45)
+        self.text = tk.Text(self.frame2, width=50)
         self.text.grid(row=2, column=0)
         self.scrollbar = tk.Scrollbar(self.frame2, command=self.text.yview)
         self.scrollbar.grid(row=2, column=1, sticky="ns")
         self.text.config(yscrollcommand=self.scrollbar.set)
 
-        self.errLog = tk.Text(self.frame2, width=45, height=7)
+        self.errLog = tk.Text(self.frame2, width=50, height=7)
         self.errLog.grid(row=3, column=0)
         self.errScroll = tk.Scrollbar(self.frame2, command=self.errLog.yview)
         self.errScroll.grid(row=3, column=1, sticky="ns")
@@ -366,6 +366,7 @@ class App:
         if self.mqtt_client is not None:
             if not self.mqtt_client.is_connected():
                 print("MQTT client is not connected.")
+                self.playSound()
                 return
 
             try:
@@ -375,7 +376,7 @@ class App:
 
                 # Ждем завершения публикации
                 result.wait_for_publish()
-
+                # Проверяем код возврата (return code)
                 if result.rc != mqtt.MQTT_ERR_SUCCESS:
                     print(f"Failed to publish to MQTT: {mqtt.error_string(result.rc)}")
                     self.playSound()
@@ -440,9 +441,6 @@ class App:
             self.text.see('end')
             self.process_data(data)
 
-            # self.save_to_file(data)
-            # self.save_to_db(data)
-
     # проверяем ошибку метки времени и при необходимости корректируем
     def check_time(self, data_timestamp):
         # Получаем текущее время
@@ -451,7 +449,7 @@ class App:
 
         # Сверяем метку времени данных с текущим временем
         time_difference = abs(current_timestamp - int(data_timestamp))
-        max_allowed_difference = 60  # Например, разрешаем разницу в 60 секунд
+        max_allowed_difference = 10  # Например, разрешаем разницу в 60 секунд
 
         if time_difference > max_allowed_difference:
             print(f"Внимание: разница во времени {time_difference} секунд!")
@@ -461,14 +459,16 @@ class App:
             formatted_time = current_time.strftime('%Y%m%d%H%M%S')
             self.serial_port.write(formatted_time.encode())
         else:
-            print("Метка времени в пределах допустимого диапазона.")
+            print("Метка времени в пределах допустимого диапазона.") 
             self.corrected_once = True
 
     def validate_data(self, data):
         """Проверяет данные и возвращает кортеж (валидны ли данные, откорректированные данные)."""
         data = data.split(',')
-        if len(data) != 7:
+        if len(data) != 8:
             self.playSound()
+            self.errLog.insert('end', ','.join(data) + '\n')
+            self.errLog.see('end')
             return False, None
 
         corrected_data = []
@@ -482,11 +482,13 @@ class App:
                 return False, None
 
         # Проверка конкретных значений
+        corrected_data = corrected_data[:-1] # Временно, потом удалю
         Time, Humidity, Pressure, Alt, AirTemp, WaterTemp, Salinity = corrected_data
 
         if not self.corrected_once:
             self.check_time(Time)
-            return False, None
+            if not self.corrected_once:
+                return False, None
 
         # Проверка диапазонов
         if not (0 <= int(Humidity) <= 100 and

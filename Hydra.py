@@ -7,6 +7,8 @@ import tkinter as tk
 import wx
 import wx.adv
 import configparser
+import paho.mqtt.client as mqtt
+import json
 from tkinter import filedialog as fd
 from tkinter import ttk
 from tkinter import messagebox
@@ -89,10 +91,40 @@ def open_port():
     # Открываем порт с выбранными параметрами и сохраняем его как глобальную переменную
     try:
         serial_port = serial.Serial(port, baudrate)
-    except serial.SerialException:
+    except serial.SerialException as err:
         # Если порт недоступен, выводим сообщение об ошибке и завершаем программу с помощью exit
+        print(f"Error: {err}")
         print("Ошибка открытия порта")
+        errLog.insert('end', "Ошибка открытия порта" + '\n')
+        messagebox.showinfo("Ошибка открытия порта")
         exit()
+
+# Настройки MQTT
+mqtt_broker = '192.168.5.104'
+mqtt_port = 1883
+mqtt_topic = 'hydra'
+
+# Аутентификационные данные MQTT
+mqtt_username = 'mqtt'
+mqtt_password = 'mqtt'
+
+# Функция для обработки входящих сообщений MQTT
+def on_message(client, userdata, msg):
+    print(f"Received message: {msg.payload}")
+
+# Инициализация MQTT клиента
+mqtt_client = mqtt.Client()
+#mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+#mqtt_client.on_message = on_message
+
+# Устанавливаем аутентификацию
+mqtt_client.username_pw_set(username=mqtt_username, password=mqtt_password)
+mqtt_client.connect(mqtt_broker, mqtt_port, 60)
+mqtt_client.subscribe(mqtt_topic)
+
+while not mqtt_client.is_connected():
+    mqtt_client.loop()
+    print(mqtt_client.is_connected())
 
 # Создаем функцию для выбора файла из диалога
 def  select_file():
@@ -117,7 +149,8 @@ def toggle_read():
         icon.set_icon("icon_on.png")
         try:
             serial_port
-        except NameError:
+        except NameError as err:
+            print(f"Error: {err}")
             open_port()
         if not serial_port.is_open:
             serial_port.open()
@@ -125,73 +158,129 @@ def toggle_read():
 # Создаем функцию для чтения и записи данных из порта в базу данных
 def read_and_write():
     if reading:  # Если чтение включено, то читаем данные из порта и записываем их в базу данных
-        data = serial_port.readline()  # Читаем строку данных из порта
-        data = data.decode('utf-8').strip()  # Декодируем данные из байтов в строку и убираем пробелы и переносы строк
+        try:
+            while not serial_port.isOpen():
+                open_port()
+            if serial_port.isOpen():
+                serial_port.write(b'Hello')
+                data = serial_port.readline()  # Читаем строку данных из порта
+            else:
+                print ("Port unavailable")
+                errLog.insert('end', "Port unavailable" + '\n')
 
-        # Добавляем данные в виджет Text с новой строки
-        text.insert('end', data + '\n')
-        # Прокручиваем текст до конца
-        text.see('end')
+            try:
+                data = data.decode('utf-8').strip()  # Декодируем данные из байтов в строку и убираем пробелы и переносы строк
+            except UnicodeDecodeError:
+                print("Error: Unable to decode byte string.")
+                errLog.insert('end', "Error: Unable to decode byte string." + '\n')
+                print(data)
+                data = "error"
+        except serial.SerialException as err:
+            data = None
+            print(f"Error: {err}")
+            #errLog.insert('end', "Serial port error" + err + '\n')
+            try:
+                serial_port.close()
+            except serial.SerialException:
+                pass
+        if data:
+            # Добавляем данные в виджет Text с новой строки
+            text.insert('end', data + '\n')
+            # Прокручиваем текст до конца
+            text.see('end')
 
-        # Проверяем, что пользователь выбрал файл
-        file_name = file_entry.get()
-        if file_name:
-            # Открываем файл для записи в режиме дозаписи ('a')
-            with open(file_name, 'a') as f:
-                # Записываем данные о вставке в файл
-                f.write(data+"\n")
-                # Закрываем файл
-                f.close()
-        else:
-            messagebox.showinfo("Ошибка","Выберите файл")
-            toggle_read()
+            # Проверяем, что пользователь выбрал файл
+            file_name = file_entry.get()
+            if file_name:
+                # Открываем файл для записи в режиме дозаписи ('a')
+                with open(file_name, 'a') as f:
+                    # Записываем данные о вставке в файл
+                    f.write(data+"\n")
+                    # Закрываем файл
+                    f.close()
+            else:
+                messagebox.showinfo("Ошибка","Выберите файл")
+                toggle_read()
 
-        # Разделение строки на значения
-        data = data.split(',')
+            # Разделение строки на значения
+            data = data.split(',')
+            if len(data) == 7:
 
-        notValid = "False"
-        for x in data:
-            if not x.isdigit():
-                try:
-                    float(x)
-                except ValueError:
-                    notValid = "True"
+                notValid = "False"
+                for x in data:
+                    if not x.isdigit():
+                        try:
+                            float(x)
+                        except ValueError:
+                            #пришли не валидные данные
+                            notValid = "True"
+                            data_aud, fs = sf.read(soundname)
+                            sd.play(data_aud, fs)
+                            sd.wait()
 
-        if notValid == "False":
-            # Извлекаем температуру и влажность из данных
-            Time = data[0]
-            Humidity = data[1]
-            Pressure = data[2]
-            Alt = data[3]
-            AirTemp = data[4]
-            WaterTemp = data[5]
-            Salinity = data[6]
+                if notValid == "False":
+                    # Извлекаем температуру и влажность из данных
+                    Time = data[0]
+                    Humidity = data[1]
+                    Pressure = data[2]
+                    Alt = data[3]
+                    AirTemp = data[4]
+                    WaterTemp = data[5]
+                    Salinity = data[6]
 
-            #print(data)  # Выводим данные на экран для отладки
-            print(datetime.utcfromtimestamp(int(data[0])).strftime('%m-%d %H:%M:%S'),data[1],data[2],data[3],data[4],data[5],data[6])
+                    #print(data)  # Выводим данные на экран для отладки
+                    print(datetime.utcfromtimestamp(int(data[0])).strftime('%m-%d %H:%M:%S'),data[1],data[2],data[3],data[4],data[5],data[6])
 
-            if float(WaterTemp) == -127:
-                # если есть, воспроизводим звуковой файл
-                data_aud, fs = sf.read(soundname)
-                sd.play(data_aud, fs)
-                sd.wait()
-                WaterTemp = 25.03
-                Salinity = int( float(Salinity) * ( 1.0 + 0.02 * ( -127.0 - 25.0)))
+                    if float(WaterTemp) == -127:
+                        # если есть, воспроизводим звуковой файл
+                        data_aud, fs = sf.read(soundname)
+                        sd.play(data_aud, fs)
+                        sd.wait()
+                        WaterTemp = 25.03
+                        Salinity = int( float(Salinity) * ( 1.0 + 0.02 * ( -127.0 - 25.0)))
 
-            if int(Humidity) >= 0 and int(Humidity) <= 100 \
-                and float(AirTemp) >= 10 and float(AirTemp) <= 50 \
-                and float(WaterTemp) >= 10 and float(WaterTemp) <= 50 \
-                and int(Salinity) >= 0 and int(Salinity) <= 3000:
+                    if int(Humidity) >= 0 and int(Humidity) <= 100 \
+                        and float(AirTemp) >= 10 and float(AirTemp) <= 50 \
+                        and float(WaterTemp) >= 10 and float(WaterTemp) <= 50 \
+                        and int(Salinity) >= 0 and int(Salinity) <= 3000:
 
-                    # Вставка значений в таблицу Meteo
+                            # Вставка значений в таблицу Meteo
+                            sql = "INSERT INTO Meteo (Time,Humidity,Pressure,Alt,AirTemp,WaterTemp,Salinity)  VALUES (FROM_UNIXTIME(%s), %s, %s, %s, %s, %s, %s)"
+                            val = (Time,Humidity,Pressure,Alt,AirTemp, WaterTemp,Salinity)
+                            try:
+                                cursor.execute(sql, val)
+                                sql_conn.commit()  # Подтверждаем изменения в базе данных
 
-                    sql = "INSERT INTO Meteo (Time,Humidity,Pressure,Alt,AirTemp,WaterTemp,Salinity)  VALUES (FROM_UNIXTIME(%s), %s, %s, %s, %s, %s, %s)"
-                    val = (Time,Humidity,Pressure,Alt,AirTemp, WaterTemp,Salinity)
-                    try:
-                        cursor.execute(sql, val)
-                        sql_conn.commit()  # Подтверждаем изменения в базе данных
-                    except mysql.connector.Error as err:
-                        messagebox.showinfo("Ошибка", format(err))
+                            except mysql.connector.Error as err:
+                                messagebox.showinfo("Ошибка SQL", format(err))
+                                errLog.insert('end', "Ошибка SQL" + format(err) + '\n')
+
+                            # Создание JSON объекта
+                            json_data = json.dumps(data)
+
+                            # Отправка данных в MQTT
+                            #mqtt_client.loop()
+                            mqtt_client.publish(mqtt_topic, json_data)
+                            """
+                            if not mqtt_client.is_connected():
+                                print("Сервер MQTT недоступен")
+                                errLog.insert('end', "Сервер MQTT недоступен" + '\n')
+                                try:
+                                    mqtt_client.reconnect()
+                                except Exception as e:
+                                    print(f"Ошибка при попытке восстановления соединения: {e}")
+                                    errLog.insert('end', "Ошибка при попытке восстановления соединения:" + format(e) + '\n')
+                            else:
+                                try:
+                                    mqtt_client.publish(mqtt_topic, json_data)
+                                except Exception as e:
+                                    print(f"Ошибка отправки данных mqtt: {e}")
+                                    errLog.insert('end', "Ошибка отправки данных mqtt:" + format(e) + '\n')
+                                    """
+
+                    else:
+                        messagebox.showinfo("Ошибка Данных")
+                        errLog.insert('end', "Ошибка Данных" + '\n')
 
     # Запускаем функцию снова через 1 секунду (строку не перемещать)
     root.after(1000, read_and_write)
@@ -276,22 +365,26 @@ btn2.grid(row=1, column=1 ,sticky="ns")
 # Создаем виджет Text для отображения данных из порта
 text = tk.Text(frame2,width=45)
 text.grid(row=2, column=0 )
-
 # Создаем виджет Scrollbar для прокрутки текста
 scrollbar = tk.Scrollbar(frame2, command=text.yview)
 scrollbar.grid(row=2, column=1 ,sticky="ns")
-
 # Связываем виджеты Text и Scrollbar друг с другом
 text.config(yscrollcommand=scrollbar.set)
 
+# Создаем виджет Text для отображения лога ошибок и прокрутку
+errLog = tk.Text(frame2,width=45, height=7)
+errLog.grid(row=3, column=0 )
+errScroll = tk.Scrollbar(frame2, command=text.yview)
+errScroll.grid(row=3, column=1 ,sticky="ns")
+errLog.config(yscrollcommand=errScroll.set)
 
 # Создаем кнопку для запуска и остановки чтения данных из порта с помощью tkinter.Button
 start_button = tk.Button(frame2, text="Запустить", command=toggle_read)
-start_button.grid(row=3, column=0)
+start_button.grid(row=4, column=0)
 
 # Создаем кнопку для сохранения настроек
 save_button = tk.Button(frame2, text="Save settings", command=save_settings)
-save_button.grid(row=3, column=1)
+save_button.grid(row=4, column=1)
 
 
 # Привязываем обработчик сворачивания окна программы к событию Unmap
@@ -302,9 +395,11 @@ root.bind("<Unmap>", lambda event: minimize_to_tray())
 try:
     sql_conn = mysql.connector.connect(user=user_name.get(), password=password.get(),
                                        host=server_name.get(),
-                                       database=database_name.get())
+                                       database=database_name.get(),
+                                       ) #ssl_disabled=True
 except mysql.connector.Error as err:
-    messagebox.showinfo("Ошибка", format(err))
+    messagebox.showinfo("Ошибка подключения SQL", format(err))
+    print("Ошибка подключения SQL" + format(err) + '\n')
 else:
     cursor = sql_conn.cursor()
 
